@@ -1,0 +1,113 @@
+library(MASS)
+library(Matrix)
+library(stats)
+library(base)
+library(MTS)
+library(forecast)
+##################
+r=2
+TT=500
+ft=mvrnorm(TT,rep(0,r),diag(r))
+#####factors
+FT=function(TT,r){
+  ft=mvrnorm(TT,rep(0,r),diag(r))
+  return(ft)
+}
+#######X-predictor
+Xt=function(TT,NN,ft,B,sigma){
+  U=mvrnorm(TT,rep(0,NN),sigma)
+  xt=B%*%t(ft)+t(U)
+  return(t(xt))
+}
+######
+yt=function(TT,ft,h,sgm,bbeta){
+  yt=numeric(TT+h)
+  eps=rnorm(TT+h,0,sgm)
+  for (i in 1:(TT-1)){
+    yt[i+h+1]=t(bbeta)%*%c(ft[i+1,],ft[i,])+eps[i]
+  }
+  return(yt[(h+2):(TT+h)])
+}
+####################
+TT=200#sample size
+NN=500#predictors
+r=2#factors
+n=490#zero rows
+set.seed(1234)
+#a1=runif(NN*r/2,0.5,1.5)
+#b1=runif(NN*r/2,-1.5,-0.5)
+#c1=c(a1,b1)
+#BB=matrix(sample(c1,NN*r),nrow=NN,ncol=r)
+BB=matrix(runif(NN*r,-2,2),nrow=NN,ncol=r)
+#BB=matrix(numeric(NN*r),NN,r)
+#BB[,1]=runif(NN,0.5,2)
+#BB[,2]=runif(NN,-2,2)
+#BB=svd(BB)$u%*%diag(c(2*sqrt(NN),sqrt(NN)))
+aa=sample(1:NN,n)
+BB[aa,]=0
+bbeta=c(1,-0.8,-1,2)
+sigma=diag(NN)
+#diag(runif(NN,1,3))#predictor
+sgm=1#yt
+h=1#step
+###########test
+#ft=FT(TT,r)
+#XX=Xt(TT,NN,ft,BB,sigma)
+#yy=yt(TT,ft,h,sgm,bbeta)
+######errors
+rp=100
+SDPCA=numeric(rp)
+SPCA=numeric(rp)
+PCA=numeric(rp)
+SW=numeric(rp)
+ft=matrix(numeric(TT*2),TT,2)
+######################
+for (kk in 1:rp){
+  ft=FT(TT,r)
+  XX1=Xt(TT,NN,ft,BB,sigma)
+  XX=scale(XX1, center = F, scale = TRUE)
+  yy=yt(TT,ft,h,sgm,bbeta)
+  PCV=XX%*%t(XX)
+  ft1=eigen(PCV)$vectors[,1:2]
+  swd=lm(yy~ft1[2:TT,]-1)
+  SW[kk]=sqrt(sum((yy-ft1[2:TT,]%*%swd$coefficients)^2)/TT)
+  ft2=cbind(ft1[2:TT,],ft1[1:(TT-1),])
+  pcad=lm(yy~ft2-1)
+  PCA[kk]=sqrt(sum((yy-ft2%*%pcad$coefficients)^2)/TT)
+  Hucef=numeric(NN)
+  for (jj in 1:NN){
+    mmd=lm(yy~XX[2:TT,jj]-1)
+    Hucef[jj]=mmd$coefficients
+  }
+  XN=XX%*%diag(Hucef)
+  sPCA=XN%*%t(XN)
+  ft3=eigen(sPCA)$vectors[,1:2]
+  spd=lm(yy~ft3[2:TT,]-1)
+  SPCA[kk]=sqrt(sum((yy-ft3[2:TT,]%*%spd$coefficients)^2)/TT)
+  XNN=matrix(numeric((TT-1)*NN),TT-1,NN)
+  for (ii in 1:NN){
+    xds=cbind(XX[2:TT,ii],XX[1:(TT-1),ii])
+    xds=scale(xds,center=F,scale = TRUE)
+    sdmd=lm(yy~xds-1)
+    XNN[,ii]=xds%*%sdmd$coefficients
+  }
+  sdPCA=XNN%*%t(XNN)
+  ft4=eigen(sdPCA)$vectors[,1:4]
+  sdpd=lm(yy~ft4-1)
+  SDPCA[kk]=sqrt(sum((yy-ft4%*%sdpd$coefficients)^2)/TT)
+}
+##########
+mean(SDPCA)
+mean(SPCA)
+mean(PCA)
+mean(SW)
+###
+median(SDPCA)
+median(SPCA)
+median(PCA)
+median(SW)
+####
+eigen(sdPCA)$values[1:10]
+dd=eigen(sdPCA)$values[1:10]
+which.min(dd[5:10]/dd[4:9])
+eigen(PCV)$values[1:10]
